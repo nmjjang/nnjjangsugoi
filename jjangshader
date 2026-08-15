@@ -13206,7 +13206,7 @@ OpenButton=av.OpenButton,
 DragFrameSize=160,
 
 Position=UDim2.new(0.5,0,0.5,0),
-UICorner=4,
+UICorner=10,
 UIPadding=14,
 UIElements={},
 CanDropdown=true,
