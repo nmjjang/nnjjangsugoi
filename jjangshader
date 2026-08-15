@@ -122,9 +122,6 @@ return e.New
 end
 
 function d.New(e,f,g,h,i,j,l)
--- Square UI patch: force every shape-backed frame to use hard 90-degree corners.
-f=0
-g="Square"
 local m={
 Radius=f or 0,
 Type=g or"Circle",
@@ -161,16 +158,12 @@ end
 end
 
 function m.SetRadius(u,v)
--- Square UI patch: ignore requested radii.
-v=0
-m.Radius=0
-r.SliceScale=math.max(0/GetShape(m.Type).Radius,0.0001)
+m.Radius=v
+r.SliceScale=math.max(v/GetShape(m.Type).Radius,0.0001)
 return m
 end
 
 function m.SetType(u,v)
--- Square UI patch: prevent later layout updates from restoring squircles/circles.
-v="Square"
 m.Type=v
 local x=GetShape(v)
 r.Image=x.Image
@@ -1101,11 +1094,6 @@ return m.AddIcons(u,v)
 end
 
 function r.New(u,v,x)
--- Square UI patch: all UICorner instances are created with zero radius.
-if u=="UICorner"then
-    v=v or{}
-    v.CornerRadius=UDim.new(0,0)
-end
 local z=Instance.new(u)
 
 for A,B in next,r.DefaultProperties[u]or{}do
@@ -1216,8 +1204,7 @@ end
 
 
 function r.NewRoundFrame(u,v,x,z,A,B)
--- Square UI patch: central rounded-frame helper is permanently square.
-return i:New(0,"Square",x,z,A,nil)
+return i:New(u,v,x,z,A,nil)
 end
 
 local u=r.New local v=
@@ -5446,8 +5433,8 @@ if Glow then
 Glow.UIGradient.Color=ar.Color
 end
 
-an.UICorner.CornerRadius=UDim.new(0,0)
-an.TextButton.UICorner.CornerRadius=UDim.new(0,0)
+an.UICorner.CornerRadius=ar.CornerRadius
+an.TextButton.UICorner.CornerRadius=UDim.new(ar.CornerRadius.Scale,ar.CornerRadius.Offset-4)
 an.UIStroke.Thickness=ar.StrokeThickness
 
 ag:SetScale(ar.Scale)
@@ -13090,7 +13077,7 @@ OpenButton=av.OpenButton,
 DragFrameSize=160,
 
 Position=UDim2.new(0.5,0,0.5,0),
-UICorner=16,
+UICorner=0,
 UIPadding=14,
 UIElements={},
 CanDropdown=true,
