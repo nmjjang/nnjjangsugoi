@@ -2283,6 +2283,24 @@ function Library:CreateWindow(config)
     sidebar.Size = UDim2.new(0, sidebarWidth, 1, 0)
     sidebar.Parent = main
 
+    -- Roblox's UICorner does not clip child frames to the rounded shape of a parent.
+    -- Since the sidebar fills the left side of the window, it would visually cover
+    -- Main's top-left and bottom-left rounded corners. Give the sidebar the same
+    -- radius as the window, then mask only its inner/right edge back to a square.
+    -- Result: all four OUTER window corners are rounded, while the sidebar/content
+    -- divider remains perfectly straight.
+    local windowCorner = config.Corner or 8
+    round(sidebar, windowCorner)
+
+    local sidebarRightMask = Instance.new("Frame")
+    sidebarRightMask.Name = "SidebarRightMask"
+    sidebarRightMask.BackgroundColor3 = theme.Sidebar
+    sidebarRightMask.BorderSizePixel = 0
+    sidebarRightMask.Position = UDim2.new(1, -windowCorner, 0, 0)
+    sidebarRightMask.Size = UDim2.new(0, windowCorner, 1, 0)
+    sidebarRightMask.ZIndex = sidebar.ZIndex
+    sidebarRightMask.Parent = sidebar
+
     local divider = Instance.new("Frame")
     divider.AnchorPoint = Vector2.new(1, 0)
     divider.Position = UDim2.new(1, 0, 0, 0)
