@@ -11660,12 +11660,20 @@ TitlePaddingY=0,
 -- Mod Assistant-inspired navigation: compact vertical tiles with icon above label.
 -- Set Window.NavigationStyle = "WindUI" to restore the original tab appearance.
 local modAssistantTabs = Window.NavigationStyle == "ModAssistant"
+local compactTabs = Window.NavigationStyle == "Compact"
 if modAssistantTabs then
 ar.UICorner=2
 ar.TabPaddingX=2
 ar.TabPaddingY=4
 ar.TitlePaddingY=0
 ar.Gap=2
+end
+if compactTabs then
+ar.UICorner=4
+ar.TabPaddingX=8
+ar.TabPaddingY=4
+ar.TitlePaddingY=0
+ar.Gap=5
 end
 
 if ar.IconShape then
@@ -11681,8 +11689,8 @@ ar.Index=as
 
 ar.UIElements.Main=ak.NewRoundFrame(ar.UICorner,"Squircle",{
 BackgroundTransparency=1,
-Size=modAssistantTabs and UDim2.new(1,-4,0,58) or UDim2.new(1,-7,0,0),
-AutomaticSize=modAssistantTabs and "None" or "Y",
+Size=compactTabs and UDim2.new(1,-2,0,31) or (modAssistantTabs and UDim2.new(1,-4,0,58) or UDim2.new(1,-7,0,0)),
+AutomaticSize=(compactTabs or modAssistantTabs) and "None" or "Y",
 Parent=ap.Parent,
 ThemeTag={
 ImageColor3="TabBackground",
@@ -11724,7 +11732,7 @@ Name="Frame",
 },{
 al("UIListLayout",{
 SortOrder="LayoutOrder",
-Padding=UDim.new(0,modAssistantTabs and 2 or (2+(Window.UIPadding/2))),
+Padding=UDim.new(0,compactTabs and 8 or (modAssistantTabs and 2 or (2+(Window.UIPadding/2)))),
 FillDirection=modAssistantTabs and "Vertical" or "Horizontal",
 VerticalAlignment="Center",
 HorizontalAlignment=modAssistantTabs and "Center" or "Left",
@@ -11735,12 +11743,12 @@ ThemeTag={
 TextColor3="TabTitle",
 },
 TextTransparency=not ar.Locked and 0.4 or 0.7,
-TextSize=modAssistantTabs and 11 or 15,
-Size=modAssistantTabs and UDim2.new(1,-4,0,14) or UDim2.new(1,0,0,0),
-FontFace=Font.new(ak.Font,modAssistantTabs and Enum.FontWeight.Regular or Enum.FontWeight.Medium),
+TextSize=compactTabs and 13 or (modAssistantTabs and 11 or 15),
+Size=compactTabs and UDim2.new(1,-30,1,0) or (modAssistantTabs and UDim2.new(1,-4,0,14) or UDim2.new(1,0,0,0)),
+FontFace=Font.new(ak.Font,compactTabs and Enum.FontWeight.Regular or (modAssistantTabs and Enum.FontWeight.Regular or Enum.FontWeight.Medium)),
 TextWrapped=true,
 RichText=true,
-AutomaticSize=modAssistantTabs and "None" or "Y",
+AutomaticSize=(compactTabs or modAssistantTabs) and "None" or "Y",
 LayoutOrder=2,
 TextXAlignment=modAssistantTabs and "Center" or "Left",
 TextYAlignment="Center",
@@ -11755,13 +11763,28 @@ PaddingBottom=UDim.new(0,ar.TitlePaddingY),
 }),
 }),
 al("UIPadding",{
-PaddingTop=UDim.new(0,modAssistantTabs and 5 or ar.TabPaddingY),
+PaddingTop=UDim.new(0,compactTabs and 0 or (modAssistantTabs and 5 or ar.TabPaddingY)),
 PaddingLeft=UDim.new(0,ar.TabPaddingX),
-PaddingRight=UDim.new(0,ar.TabPaddingX),
-PaddingBottom=UDim.new(0,modAssistantTabs and 4 or ar.TabPaddingY),
+PaddingRight=UDim.new(0,compactTabs and 3 or ar.TabPaddingX),
+PaddingBottom=UDim.new(0,compactTabs and 0 or (modAssistantTabs and 4 or ar.TabPaddingY)),
 }),
 }),
 },true)
+
+if compactTabs then
+ar.UIElements.Accent=al("Frame",{
+Name="CompactAccent",
+Size=UDim2.new(0,2,0,16),
+Position=UDim2.new(1,0,0.5,0),
+AnchorPoint=Vector2.new(1,0.5),
+BackgroundTransparency=1,
+ThemeTag={
+BackgroundColor3="Primary",
+},
+Parent=ar.UIElements.Main,
+ZIndex=5,
+})
+end
 
 local at=0
 local au
@@ -11778,7 +11801,7 @@ ar.IconColor and false or true,
 ar.IconThemed,
 "TabIcon"
 )
-au.Size=UDim2.new(0,modAssistantTabs and 22 or 16,0,modAssistantTabs and 22 or 16)
+au.Size=UDim2.new(0,compactTabs and 15 or (modAssistantTabs and 22 or 16),0,compactTabs and 15 or (modAssistantTabs and 22 or 16))
 if ar.IconColor then
 au.ImageLabel.ImageColor3=ar.IconColor
 end
@@ -11789,6 +11812,10 @@ au.ImageLabel.ImageTransparency=not ar.Locked and 0 or 0.7
 if modAssistantTabs then
 au.LayoutOrder=1
 ar.UIElements.Main.Frame.TextLabel.Size=UDim2.new(1,-4,0,14)
+elseif compactTabs then
+au.LayoutOrder=1
+at=-23
+ar.UIElements.Main.Frame.TextLabel.Size=UDim2.new(1,at,1,0)
 else
 at=-18-(Window.UIPadding/2)
 ar.UIElements.Main.Frame.TextLabel.Size=UDim2.new(1,at,0,0)
@@ -12066,6 +12093,102 @@ aq,
 ar
 )
 
+-- Compact split-layout helpers.
+-- Usage:
+--   local left = Tab:Column({ Side = "Left", Width = 0.56 })
+--   local right = Tab:Column({ Side = "Right", Width = 0.44 })
+--   left:Toggle({...})
+--   right:Button({...})
+--
+-- Columns can be created in any order. Side only controls LayoutOrder.
+function ar.Column(self,options)
+options=options or{}
+local width=options.Width or 0.5
+local side=options.Side or "Left"
+local order=options.Order or (side=="Right" and 2 or 1)
+local gap=options.Gap or ar.Gap
+
+if not ar.UIElements.ColumnsRoot then
+ar.UIElements.ColumnsRoot=al("Frame",{
+Name="ColumnsRoot",
+Size=UDim2.new(1,0,0,0),
+AutomaticSize="Y",
+BackgroundTransparency=1,
+Parent=ar.UIElements.ContainerFrame,
+},{
+al("UIListLayout",{
+FillDirection="Horizontal",
+HorizontalAlignment="Left",
+VerticalAlignment="Top",
+Padding=UDim.new(0,10),
+SortOrder="LayoutOrder",
+}),
+})
+end
+
+local column={
+__type="Column",
+Side=side,
+Width=width,
+Elements={},
+ElementFrame=nil,
+}
+
+local frame=al("Frame",{
+Name=tostring(side).."Column",
+Size=UDim2.new(width,-5,0,0),
+AutomaticSize="Y",
+BackgroundTransparency=1,
+LayoutOrder=order,
+Parent=ar.UIElements.ColumnsRoot,
+},{
+al("UIListLayout",{
+FillDirection="Vertical",
+HorizontalAlignment="Center",
+Padding=UDim.new(0,gap),
+SortOrder="LayoutOrder",
+}),
+})
+
+column.ElementFrame=frame
+column.UIElements={Main=frame}
+
+aA.Load(
+column,
+frame,
+aA.Elements,
+Window,
+WindUI,
+nil,
+aA,
+aq,
+ar
+)
+
+function column.SetWidth(self,newWidth)
+column.Width=newWidth
+frame.Size=UDim2.new(newWidth,-5,0,0)
+return column
+end
+
+function column.SetSide(self,newSide)
+column.Side=newSide
+frame.Name=tostring(newSide).."Column"
+frame.LayoutOrder=(newSide=="Right" and 2 or 1)
+return column
+end
+
+return column
+end
+
+function ar.Left(self,width)
+return ar:Column({Side="Left",Width=width or 0.5,Order=1})
+end
+
+function ar.Right(self,width)
+return ar:Column({Side="Right",Width=width or 0.5,Order=2})
+end
+
 function ar.LockAll(aB)
 
 for b,d in next,Window.AllElements do
@@ -12130,7 +12253,7 @@ ar.UIElements.Icon=nil
 end
 if newIcon then
 local icon=ak.Image(newIcon,tostring(newIcon)..":"..ar.Title,0,Window.Folder,ar.__type,ar.IconColor and false or true,ar.IconThemed,"TabIcon")
-icon.Size=UDim2.new(0,modAssistantTabs and 22 or 16,0,modAssistantTabs and 22 or 16)
+icon.Size=UDim2.new(0,compactTabs and 15 or (modAssistantTabs and 22 or 16),0,compactTabs and 15 or (modAssistantTabs and 22 or 16))
 icon.Parent=ar.UIElements.Main.Frame
 icon.LayoutOrder=1
 if ar.IconColor and icon.ImageLabel then icon.ImageLabel.ImageColor3=ar.IconColor end
@@ -12220,6 +12343,9 @@ ao.SelectedTab=aq
 
 for ar,as in next,ao.Tabs do
 if not as.Locked then
+if as.UIElements.Accent then
+as.UIElements.Accent.BackgroundTransparency=1
+end
 ak.SetThemeTag(as.UIElements.Main,{
 ImageTransparency="TabBorderTransparency",
 },0.15)
@@ -12257,6 +12383,9 @@ ImageTransparency="TabIconTransparencyActive",
 },0.15)
 end
 ao.Tabs[aq].Selected=true
+if ao.Tabs[aq].UIElements.Accent then
+ao.Tabs[aq].UIElements.Accent.BackgroundTransparency=0
+end
 
 task.spawn(function()
 for ar,as in next,ao.Containers do
@@ -13066,8 +13195,8 @@ Radius=av.Radius or 16,
 Transparent=av.Transparent or false,
 HideSearchBar=av.HideSearchBar~=false,
 ScrollBarEnabled=av.ScrollBarEnabled or false,
-NavigationStyle=av.NavigationStyle or "ModAssistant",
-SideBarWidth=av.SideBarWidth or ((av.NavigationStyle or "ModAssistant")=="ModAssistant" and 62 or 200),
+NavigationStyle=av.NavigationStyle or "Compact",
+SideBarWidth=av.SideBarWidth or ((av.NavigationStyle or "Compact")=="Compact" and 145 or ((av.NavigationStyle or "Compact")=="ModAssistant" and 62 or 200)),
 Acrylic=av.Acrylic or false,
 NewElements=av.NewElements or false,
 IgnoreAlerts=av.IgnoreAlerts or false,
@@ -13112,13 +13241,13 @@ PendingFlags={},
 IsToggleDragging=false,
 }
 
-aw.UICorner=aw.Radius
+aw.UICorner=0
 
 aw.TopBarButtonIconSize=aw.TopBarButtonIconSize or(aw.Topbar.ButtonsType=="Mac"and 11 or 16)
 
 aw.ElementConfig={
 UIPadding=(aw.NewElements and 10 or 13),
-UICorner=aw.ElementsRadius or(aw.NewElements and 23 or 16),
+UICorner=aw.ElementsRadius or(aw.NavigationStyle=="Compact" and 6 or (aw.NewElements and 23 or 16)),
 }
 
 local ax=aw.Size or UDim2.new(0,580,0,460)
@@ -13246,7 +13375,7 @@ PaddingBottom=UDim.new(0,aw.UIPadding/2),
 }),
 ao("UIListLayout",{
 SortOrder="LayoutOrder",
-Padding=UDim.new(0,aw.NavigationStyle=="ModAssistant" and 2 or aw.Gap),
+Padding=UDim.new(0,aw.NavigationStyle=="Compact" and 1 or (aw.NavigationStyle=="ModAssistant" and 2 or aw.Gap)),
 HorizontalAlignment=aw.NavigationStyle=="ModAssistant" and "Center" or "Left",
 }),
 }),
