@@ -231,6 +231,11 @@ local DefaultTheme = {
     AccentText = Color3.fromRGB(55, 30, 43),
 
     Border = Color3.fromRGB(54, 54, 54),
+
+    -- Slightly brighter than the normal UI border so an inactive
+    -- 14x14 checkbox remains visible on top of a Section card.
+    CheckboxBorder = Color3.fromRGB(72, 72, 72),
+
     Element = Color3.fromRGB(34, 34, 34),
     ElementHover = Color3.fromRGB(40, 40, 40),
 
@@ -634,9 +639,17 @@ function Section:Checkbox(config)
     boxStroke.Name = "CheckboxBorder"
     boxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     boxStroke.LineJoinMode = Enum.LineJoinMode.Round
-    boxStroke.Thickness = config.BorderThickness or 1
-    boxStroke.Color = config.BorderColor or theme.Border
-    boxStroke.Transparency = config.BorderTransparency == nil and 0 or config.BorderTransparency
+    boxStroke.Thickness = config.BorderThickness or 1.25
+    boxStroke.Color =
+        config.BorderColor
+        or theme.CheckboxBorder
+        or theme.Border
+        or Color3.fromRGB(72, 72, 72)
+
+    boxStroke.Transparency =
+        config.BorderTransparency == nil
+        and 0
+        or config.BorderTransparency
     boxStroke.Parent = box
 
     local state = {
@@ -705,7 +718,9 @@ function Section:Checkbox(config)
 
         local inactiveBorderColor =
             config.BorderColor
+            or theme.CheckboxBorder
             or theme.Border
+            or Color3.fromRGB(72, 72, 72)
 
         local activeBorderTransparency =
             config.ActiveBorderTransparency == nil
@@ -773,6 +788,25 @@ function Section:Checkbox(config)
 
     function object:GetCheckboxIcon()
         return state.CheckboxIcon
+    end
+
+    function object:SetBorderColor(color)
+        if typeof(color) == "Color3" then
+            config.BorderColor = color
+            renderCheckbox(false)
+        end
+
+        return self
+    end
+
+    function object:SetBorderThickness(thickness)
+        thickness = tonumber(thickness)
+
+        if thickness then
+            boxStroke.Thickness = math.max(0, thickness)
+        end
+
+        return self
     end
 
     box.MouseButton1Click:Connect(function()
@@ -1780,11 +1814,17 @@ end
 function Section:Colorpicker(config)
     config = config or {}
     local theme = self.Window.Theme
+
     config.RightReserve = config.RightReserve or 40
 
     local row, title = makeRow(self, config, config.Height or 30)
 
+    --========================================================
+    -- SWATCH
+    --========================================================
+
     local swatch = Instance.new("TextButton")
+    swatch.Name = "ColorpickerSwatch"
     swatch.AnchorPoint = Vector2.new(1, 0.5)
     swatch.Position = UDim2.new(1, 0, 0.5, 0)
     swatch.Size = UDim2.fromOffset(config.SwatchSize or 24, config.SwatchSize or 24)
@@ -1792,23 +1832,41 @@ function Section:Colorpicker(config)
     swatch.BorderSizePixel = 0
     swatch.Text = ""
     swatch.AutoButtonColor = false
+    swatch.ZIndex = 5
     swatch.Parent = row
-    round(swatch, config.Corner or 5)
-    stroke(swatch, theme.Border, 1, 0.35)
+
+    round(swatch, config.SwatchCorner or config.Corner or 5)
+    stroke(swatch, config.SwatchBorderColor or theme.Border, 1, 0.2)
+
+    --========================================================
+    -- POPUP
+    --========================================================
+
+    local popupWidth = config.PopupWidth or 220
+    local svHeight = config.SVHeight or 125
+    local hueHeight = config.HueHeight or 8
+    local innerPadding = config.PopupPadding or 10
+    local gap = config.Gap or 14
+    local popupHeight = innerPadding + svHeight + gap + hueHeight + innerPadding
 
     local popup = Instance.new("Frame")
     popup.Name = "ColorpickerPopup"
-    popup.BackgroundColor3 = theme.Popup
+    popup.BackgroundColor3 = config.PopupColor or theme.Popup
     popup.BorderSizePixel = 0
     popup.Visible = false
     popup.AnchorPoint = Vector2.new(1, 0)
     popup.Position = UDim2.new(1, 0, 1, 6)
-    popup.Size = UDim2.fromOffset(180, 155)
+    popup.Size = UDim2.fromOffset(popupWidth, popupHeight)
     popup.ZIndex = 40
+    popup.ClipsDescendants = false
     popup.Parent = swatch
-    round(popup, 6)
-    stroke(popup, theme.Border, 1, 0.4)
-    padding(popup, 10, 10, 10, 10)
+
+    round(popup, config.PopupCorner or 6)
+    stroke(popup, config.PopupBorderColor or theme.Border, 1, 0.35)
+
+    --========================================================
+    -- STATE
+    --========================================================
 
     local state = {
         Value = swatch.BackgroundColor3,
@@ -1818,135 +1876,271 @@ function Section:Colorpicker(config)
 
     local h, s, v = Color3.toHSV(state.Value)
 
-    local preview = Instance.new("Frame")
-    preview.BackgroundColor3 = state.Value
-    preview.BorderSizePixel = 0
-    preview.Size = UDim2.new(1, 0, 0, 24)
-    preview.ZIndex = 41
-    preview.Parent = popup
-    round(preview, 4)
+    --========================================================
+    -- SATURATION / VALUE AREA
+    --========================================================
 
-    local controls = Instance.new("Frame")
-    controls.BackgroundTransparency = 1
-    controls.Position = UDim2.fromOffset(0, 34)
-    controls.Size = UDim2.new(1, 0, 1, -34)
-    controls.ZIndex = 41
-    controls.Parent = popup
-    local controlsLayout = list(controls, 8)
+    local sv = Instance.new("TextButton")
+    sv.Name = "SaturationValue"
+    sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+    sv.BorderSizePixel = 0
+    sv.Position = UDim2.fromOffset(innerPadding, innerPadding)
+    sv.Size = UDim2.new(1, -(innerPadding * 2), 0, svHeight)
+    sv.Text = ""
+    sv.AutoButtonColor = false
+    sv.ClipsDescendants = true
+    sv.ZIndex = 41
+    sv.Parent = popup
 
-    local function createChannel(name, defaultValue)
-        local channel = Instance.new("Frame")
-        channel.BackgroundTransparency = 1
-        channel.Size = UDim2.new(1, 0, 0, 28)
-        channel.ZIndex = 42
-        channel.Parent = controls
+    round(sv, config.SVCorner or 4)
 
-        local label = makeText(channel, {
-            Text = name,
-            TextColor3 = theme.MutedText,
-            TextSize = 10,
-            Font = theme.Font,
-            Size = UDim2.fromOffset(18, 28),
-            ZIndex = 42,
-        })
+    -- White -> transparent horizontally.
+    -- Left side becomes white, right side stays pure hue.
+    local whiteLayer = Instance.new("Frame")
+    whiteLayer.Name = "WhiteGradient"
+    whiteLayer.BackgroundColor3 = Color3.new(1, 1, 1)
+    whiteLayer.BorderSizePixel = 0
+    whiteLayer.Size = UDim2.fromScale(1, 1)
+    whiteLayer.ZIndex = 42
+    whiteLayer.Parent = sv
 
-        local bar = Instance.new("TextButton")
-        bar.BackgroundColor3 = theme.Element
-        bar.BorderSizePixel = 0
-        bar.Position = UDim2.fromOffset(24, 12)
-        bar.Size = UDim2.new(1, -24, 0, 5)
-        bar.Text = ""
-        bar.AutoButtonColor = false
-        bar.ZIndex = 42
-        bar.Parent = channel
-        round(bar, 99)
+    local whiteGradient = Instance.new("UIGradient")
+    whiteGradient.Rotation = 0
+    whiteGradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    whiteGradient.Parent = whiteLayer
 
-        local fill = Instance.new("Frame")
-        fill.BackgroundColor3 = theme.Accent
-        fill.BorderSizePixel = 0
-        fill.Size = UDim2.new(defaultValue, 0, 1, 0)
-        fill.ZIndex = 43
-        fill.Parent = bar
-        round(fill, 99)
+    -- Transparent -> black vertically.
+    -- Top preserves brightness, bottom becomes black.
+    local blackLayer = Instance.new("Frame")
+    blackLayer.Name = "BlackGradient"
+    blackLayer.BackgroundColor3 = Color3.new(0, 0, 0)
+    blackLayer.BorderSizePixel = 0
+    blackLayer.Size = UDim2.fromScale(1, 1)
+    blackLayer.ZIndex = 43
+    blackLayer.Parent = sv
 
-        local knob = Instance.new("Frame")
-        knob.BackgroundColor3 = theme.Text
-        knob.BorderSizePixel = 0
-        knob.AnchorPoint = Vector2.new(0.5, 0.5)
-        knob.Position = UDim2.new(defaultValue, 0, 0.5, 0)
-        knob.Size = UDim2.fromOffset(9, 9)
-        knob.ZIndex = 44
-        knob.Parent = bar
-        round(knob, 99)
+    local blackGradient = Instance.new("UIGradient")
+    blackGradient.Rotation = 90
+    blackGradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(1, 0),
+    })
+    blackGradient.Parent = blackLayer
 
-        return { Bar = bar, Fill = fill, Knob = knob }
-    end
+    -- Circular selector like the reference image.
+    local svSelector = Instance.new("Frame")
+    svSelector.Name = "Selector"
+    svSelector.AnchorPoint = Vector2.new(0.5, 0.5)
+    svSelector.BackgroundColor3 = Color3.fromHSV(h, s, v)
+    svSelector.BorderSizePixel = 0
+    svSelector.Size = UDim2.fromOffset(config.SelectorSize or 18, config.SelectorSize or 18)
+    svSelector.ZIndex = 45
+    svSelector.Parent = sv
 
-    local hue = createChannel("H", h)
-    local sat = createChannel("S", s)
-    local val = createChannel("V", v)
+    round(svSelector, 999)
+
+    local svStroke = Instance.new("UIStroke")
+    svStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    svStroke.Color = config.SelectorBorderColor or Color3.new(1, 1, 1)
+    svStroke.Thickness = config.SelectorBorderThickness or 2
+    svStroke.Parent = svSelector
+
+    --========================================================
+    -- HUE BAR
+    --========================================================
+
+    local hueBar = Instance.new("TextButton")
+    hueBar.Name = "Hue"
+    hueBar.BackgroundColor3 = Color3.new(1, 1, 1)
+    hueBar.BorderSizePixel = 0
+    hueBar.Position = UDim2.fromOffset(innerPadding, innerPadding + svHeight + gap)
+    hueBar.Size = UDim2.new(1, -(innerPadding * 2), 0, hueHeight)
+    hueBar.Text = ""
+    hueBar.AutoButtonColor = false
+    hueBar.ZIndex = 41
+    hueBar.Parent = popup
+
+    round(hueBar, 999)
+
+    local hueGradient = Instance.new("UIGradient")
+    hueGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0.00, Color3.fromRGB(255, 0, 0)),
+        ColorSequenceKeypoint.new(0.16, Color3.fromRGB(255, 255, 0)),
+        ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)),
+        ColorSequenceKeypoint.new(0.50, Color3.fromRGB(0, 255, 255)),
+        ColorSequenceKeypoint.new(0.66, Color3.fromRGB(0, 0, 255)),
+        ColorSequenceKeypoint.new(0.83, Color3.fromRGB(255, 0, 255)),
+        ColorSequenceKeypoint.new(1.00, Color3.fromRGB(255, 0, 0)),
+    })
+    hueGradient.Parent = hueBar
+
+    local hueSelector = Instance.new("Frame")
+    hueSelector.Name = "Selector"
+    hueSelector.AnchorPoint = Vector2.new(0.5, 0.5)
+    hueSelector.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+    hueSelector.BorderSizePixel = 0
+    hueSelector.Position = UDim2.new(h, 0, 0.5, 0)
+    hueSelector.Size = UDim2.fromOffset(config.HueSelectorSize or 18, config.HueSelectorSize or 18)
+    hueSelector.ZIndex = 45
+    hueSelector.Parent = hueBar
+
+    round(hueSelector, 999)
+
+    local hueStroke = Instance.new("UIStroke")
+    hueStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    hueStroke.Color = config.HueSelectorBorderColor or Color3.new(1, 1, 1)
+    hueStroke.Thickness = config.HueSelectorBorderThickness or 2
+    hueStroke.Parent = hueSelector
+
+    --========================================================
+    -- OBJECT
+    --========================================================
 
     local object = {
         __type = "Colorpicker",
-        UIElements = { Row = row, Title = title, Swatch = swatch, Popup = popup },
+
+        UIElements = {
+            Row = row,
+            Title = title,
+            Swatch = swatch,
+            Popup = popup,
+
+            SaturationValue = sv,
+            SaturationValueSelector = svSelector,
+
+            Hue = hueBar,
+            HueSelector = hueSelector,
+        },
     }
+
+    --========================================================
+    -- RENDER
+    --========================================================
 
     local function syncColor(fireCallback)
         state.Value = Color3.fromHSV(h, s, v)
-        swatch.BackgroundColor3 = state.Value
-        preview.BackgroundColor3 = state.Value
 
-        hue.Fill.Size = UDim2.new(h, 0, 1, 0)
-        hue.Knob.Position = UDim2.new(h, 0, 0.5, 0)
-        sat.Fill.Size = UDim2.new(s, 0, 1, 0)
-        sat.Knob.Position = UDim2.new(s, 0, 0.5, 0)
-        val.Fill.Size = UDim2.new(v, 0, 1, 0)
-        val.Knob.Position = UDim2.new(v, 0, 0.5, 0)
+        swatch.BackgroundColor3 = state.Value
+        sv.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+
+        svSelector.Position = UDim2.fromScale(s, 1 - v)
+        svSelector.BackgroundColor3 = state.Value
+
+        hueSelector.Position = UDim2.new(h, 0, 0.5, 0)
+        hueSelector.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 
         if fireCallback ~= false then
             safeCallback(config.Callback, state.Value)
         end
     end
 
-    local function bindBar(barObj, setter)
-        local dragging = false
+    --========================================================
+    -- SV DRAGGING
+    --========================================================
 
-        local function update(x)
-            local ratio = clamp((x - barObj.Bar.AbsolutePosition.X) / math.max(1, barObj.Bar.AbsoluteSize.X), 0, 1)
-            setter(ratio)
-            syncColor(true)
-        end
+    local draggingSV = false
+    local draggingHue = false
 
-        barObj.Bar.InputBegan:Connect(function(input)
-            if state.Locked then return end
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = true
-                update(input.Position.X)
-            end
-        end)
+    local function updateSV(position)
+        local absolutePosition = sv.AbsolutePosition
+        local absoluteSize = sv.AbsoluteSize
 
-        UserInputService.InputChanged:Connect(function(input)
-            if not dragging or state.Locked then return end
-            if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-                update(input.Position.X)
-            end
-        end)
+        s = clamp(
+            (position.X - absolutePosition.X) / math.max(1, absoluteSize.X),
+            0,
+            1
+        )
 
-        UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                dragging = false
-            end
-        end)
+        v = 1 - clamp(
+            (position.Y - absolutePosition.Y) / math.max(1, absoluteSize.Y),
+            0,
+            1
+        )
+
+        syncColor(true)
     end
 
-    bindBar(hue, function(x) h = x end)
-    bindBar(sat, function(x) s = x end)
-    bindBar(val, function(x) v = x end)
+    local function updateHue(position)
+        local absolutePosition = hueBar.AbsolutePosition
+        local absoluteSize = hueBar.AbsoluteSize
+
+        h = clamp(
+            (position.X - absolutePosition.X) / math.max(1, absoluteSize.X),
+            0,
+            1
+        )
+
+        syncColor(true)
+    end
+
+    sv.InputBegan:Connect(function(input)
+        if state.Locked then
+            return
+        end
+
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            draggingSV = true
+            updateSV(input.Position)
+        end
+    end)
+
+    hueBar.InputBegan:Connect(function(input)
+        if state.Locked then
+            return
+        end
+
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            draggingHue = true
+            updateHue(input.Position)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if state.Locked then
+            return
+        end
+
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch
+        then
+            return
+        end
+
+        if draggingSV then
+            updateSV(input.Position)
+        elseif draggingHue then
+            updateHue(input.Position)
+        end
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            draggingSV = false
+            draggingHue = false
+        end
+    end)
+
+    --========================================================
+    -- API
+    --========================================================
 
     function object:Set(color, fireCallback)
-        if typeof(color) ~= "Color3" then return self end
+        if typeof(color) ~= "Color3" then
+            return self
+        end
+
         h, s, v = Color3.toHSV(color)
         syncColor(fireCallback)
+
         return self
     end
 
@@ -1954,26 +2148,57 @@ function Section:Colorpicker(config)
         return state.Value
     end
 
+    function object:SetHSV(newH, newS, newV, fireCallback)
+        if tonumber(newH) then h = clamp(newH, 0, 1) end
+        if tonumber(newS) then s = clamp(newS, 0, 1) end
+        if tonumber(newV) then v = clamp(newV, 0, 1) end
+
+        syncColor(fireCallback)
+        return self
+    end
+
+    function object:GetHSV()
+        return h, s, v
+    end
+
     function object:Open()
-        if state.Locked then return self end
+        if state.Locked then
+            return self
+        end
+
         state.Open = true
         popup.Visible = true
+
         return self
     end
 
     function object:Close()
         state.Open = false
         popup.Visible = false
+
         return self
     end
 
+    function object:TogglePopup()
+        if state.Open then
+            return self:Close()
+        end
+
+        return self:Open()
+    end
+
     swatch.MouseButton1Click:Connect(function()
-        if state.Locked then return end
-        if state.Open then object:Close() else object:Open() end
+        if state.Locked then
+            return
+        end
+
+        object:TogglePopup()
     end)
 
     attachLockAPI(object, state, swatch)
+
     syncColor(false)
+
     return object
 end
 
