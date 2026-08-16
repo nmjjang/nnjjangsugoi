@@ -567,75 +567,189 @@ function Section:Checkbox(config)
     config = config or {}
     local theme = self.Window.Theme
 
+    --========================================================
+    -- CONFIG / KEYBIND NORMALIZATION
+    --========================================================
+
+    -- Keybind behavior:
+    -- nil / true     -> show "=" picker with no initial bind
+    -- false          -> hide the keybind picker completely
+    -- Enum.KeyCode.X -> show picker with X already selected
+    -- "F"            -> show picker with F already selected
+    -- table          -> advanced configuration
     local keyConfig = config.Keybind
-    if keyConfig == true then
+
+    if keyConfig == nil or keyConfig == true then
         keyConfig = {}
+    elseif typeof(keyConfig) == "EnumItem" or type(keyConfig) == "string" then
+        keyConfig = {
+            Value = keyConfig,
+        }
     end
 
-    local hasRightText = keyConfig ~= nil or config.ValueText ~= nil
-    config.RightReserve = config.RightReserve or (hasRightText and 76 or 28)
+    local hasKeybind = keyConfig ~= false
+    local hasValueText = config.ValueText ~= nil
+
+    local boxSize = config.BoxSize or 14
+    local keyWidth = hasKeybind and ((type(keyConfig) == "table" and keyConfig.Width) or config.KeybindWidth or 34) or 0
+    local keyGap = config.KeybindGap or 7
+    local boxRightPadding = config.BoxRightPadding or 0
+
+    -- Reserve enough horizontal room so the title never covers the "=" picker.
+    local reserve = boxSize + boxRightPadding + 10
+
+    if hasKeybind then
+        reserve += keyWidth + keyGap
+    end
+
+    if hasValueText then
+        reserve += (config.ValueWidth or 48) + 6
+    end
+
+    config.RightReserve = config.RightReserve or reserve
 
     local row, title = makeRow(self, config, config.Height or 30)
+
+    --========================================================
+    -- CHECKBOX
+    --========================================================
 
     local box = Instance.new("TextButton")
     box.Name = "Checkbox"
     box.AnchorPoint = Vector2.new(1, 0.5)
-    box.Position = UDim2.new(1, 0, 0.5, 0)
-    box.Size = UDim2.fromOffset(config.BoxSize or 14, config.BoxSize or 14)
+    box.Position = UDim2.new(1, -boxRightPadding, 0.5, 0)
+    box.Size = UDim2.fromOffset(boxSize, boxSize)
     box.BackgroundColor3 = config.BoxColor or theme.Section
     box.BorderSizePixel = 0
     box.Text = ""
     box.AutoButtonColor = false
+    box.Active = true
+    box.ZIndex = config.BoxZIndex or 5
     box.Parent = row
+
     round(box, config.Corner or 4)
 
-    local boxStroke = stroke(box, config.BorderColor or theme.Border, 1, 0)
-    local check = createIcon(
-        box,
-        config.CheckIcon or "check",
-        math.max(8, (config.BoxSize or 14) - 4),
-        config.CheckColor or theme.AccentText,
-        3
-    )
-
-    if check then
-        check.AnchorPoint = Vector2.new(0.5, 0.5)
-        check.Position = UDim2.fromScale(0.5, 0.5)
-    end
+    -- Visible inactive border, matching the reference screenshot.
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Name = "CheckboxBorder"
+    boxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    boxStroke.LineJoinMode = Enum.LineJoinMode.Round
+    boxStroke.Thickness = config.BorderThickness or 1
+    boxStroke.Color = config.BorderColor or theme.Border
+    boxStroke.Transparency = config.BorderTransparency == nil and 0 or config.BorderTransparency
+    boxStroke.Parent = box
 
     local state = {
         Value = config.Default == true,
         Locked = config.Locked or false,
+        CheckboxIcon = config.CheckboxIcon,
     }
+
+    -- Compatibility with the older name.
+    if state.CheckboxIcon == nil and config.CheckIcon ~= nil then
+        state.CheckboxIcon = config.CheckIcon
+    end
+
+    local checkIcon
+
+    local function rebuildCheckboxIcon()
+        if checkIcon then
+            checkIcon:Destroy()
+            checkIcon = nil
+        end
+
+        -- nil / false / "" = intentionally no icon.
+        if state.CheckboxIcon == nil
+            or state.CheckboxIcon == false
+            or state.CheckboxIcon == ""
+        then
+            return
+        end
+
+        checkIcon = createIcon(
+            box,
+            tostring(state.CheckboxIcon),
+            config.CheckboxIconSize or math.max(8, boxSize - 4),
+            config.CheckboxIconColor or config.CheckColor or theme.AccentText,
+            box.ZIndex + 1
+        )
+
+        if checkIcon then
+            checkIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+            checkIcon.Position = UDim2.fromScale(0.5, 0.5)
+        end
+    end
+
+    rebuildCheckboxIcon()
 
     local object = {
         __type = "Checkbox",
+
         UIElements = {
             Row = row,
             Title = title,
             Box = box,
-            Check = check,
+            Border = boxStroke,
+            Check = checkIcon,
         },
     }
 
-    local function render()
-        if state.Value then
-            box.BackgroundColor3 = config.ActiveColor or theme.Accent
-            boxStroke.Color = config.ActiveColor or theme.Accent
-            if check then check.Visible = true end
+    local function renderCheckbox(animated)
+        local activeColor = config.ActiveColor or theme.Accent
+        local inactiveColor = config.BoxColor or theme.Section
+
+        local activeBorderColor =
+            config.ActiveBorderColor
+            or config.ActiveColor
+            or theme.Accent
+
+        local inactiveBorderColor =
+            config.BorderColor
+            or theme.Border
+
+        local activeBorderTransparency =
+            config.ActiveBorderTransparency == nil
+            and 0
+            or config.ActiveBorderTransparency
+
+        local inactiveBorderTransparency =
+            config.BorderTransparency == nil
+            and 0
+            or config.BorderTransparency
+
+        if animated then
+            tween(box, config.AnimationTime or 0.08, {
+                BackgroundColor3 = state.Value and activeColor or inactiveColor,
+            })
+
+            tween(boxStroke, config.AnimationTime or 0.08, {
+                Color = state.Value and activeBorderColor or inactiveBorderColor,
+                Transparency = state.Value and activeBorderTransparency or inactiveBorderTransparency,
+            })
         else
-            box.BackgroundColor3 = config.BoxColor or theme.Section
-            boxStroke.Color = config.BorderColor or theme.Border
-            if check then check.Visible = false end
+            box.BackgroundColor3 =
+                state.Value and activeColor or inactiveColor
+
+            boxStroke.Color =
+                state.Value and activeBorderColor or inactiveBorderColor
+
+            boxStroke.Transparency =
+                state.Value and activeBorderTransparency or inactiveBorderTransparency
+        end
+
+        if checkIcon then
+            checkIcon.Visible = state.Value
         end
     end
 
     function object:Set(value, fireCallback)
         state.Value = value == true
-        render()
+        renderCheckbox(true)
+
         if fireCallback ~= false then
             safeCallback(config.Callback, state.Value)
         end
+
         return self
     end
 
@@ -643,98 +757,177 @@ function Section:Checkbox(config)
         return state.Value
     end
 
+    function object:Toggle(fireCallback)
+        return self:Set(not state.Value, fireCallback ~= false)
+    end
+
+    function object:SetCheckboxIcon(iconName)
+        state.CheckboxIcon = iconName
+        rebuildCheckboxIcon()
+
+        object.UIElements.Check = checkIcon
+        renderCheckbox(false)
+
+        return self
+    end
+
+    function object:GetCheckboxIcon()
+        return state.CheckboxIcon
+    end
+
     box.MouseButton1Click:Connect(function()
-        if state.Locked then return end
+        if state.Locked then
+            return
+        end
+
         object:Set(not state.Value, true)
     end)
 
-    -- Optional compact value text, e.g. Auto Trimp -> "none".
-    if config.ValueText ~= nil and not keyConfig then
-        local valueLabel = makeText(row, {
-            Text = tostring(config.ValueText),
-            TextColor3 = config.ValueTextColor or theme.DimText,
-            TextSize = config.ValueTextSize or 11,
-            Font = theme.Font,
-            AnchorPoint = Vector2.new(1, 0.5),
-            Position = UDim2.new(1, -24, 0.5, 0),
-            Size = UDim2.fromOffset(config.ValueWidth or 48, 20),
-            TextXAlignment = Enum.TextXAlignment.Right,
-        })
+    --========================================================
+    -- RIGHT-SIDE LAYOUT
+    --========================================================
 
-        object.UIElements.ValueText = valueLabel
+    -- Pixel distance measured from the right edge.
+    local rightCursor = boxRightPadding + boxSize + keyGap
 
-        function object:SetValueText(value)
-            valueLabel.Text = tostring(value)
-            return self
-        end
-    end
+    --========================================================
+    -- KEYBIND PICKER
+    --========================================================
 
-    -- Optional key picker placed before the checkbox, matching the "=" controls
-    -- in the reference UI. Click it, then press any keyboard key.
-    if keyConfig then
+    if hasKeybind then
         keyConfig = keyConfig or {}
 
-        local display = makeText(row, {
-            Text = keyConfig.Display or "=",
-            Button = true,
-            TextColor3 = keyConfig.TextColor or theme.DimText,
-            TextSize = keyConfig.TextSize or 11,
-            Font = theme.Font,
-            AnchorPoint = Vector2.new(1, 0.5),
-            Position = UDim2.new(1, -24, 0.5, 0),
-            Size = UDim2.fromOffset(keyConfig.Width or 45, 20),
-            TextXAlignment = Enum.TextXAlignment.Right,
-        })
+        -- IMPORTANT:
+        -- This is a real TextButton, not a label pretending to be clickable.
+        -- Giving it a higher ZIndex also prevents the row/title from swallowing
+        -- the click.
+        local display = Instance.new("TextButton")
+
+        display.Name = "CheckboxKeybind"
+        display.AnchorPoint = Vector2.new(1, 0.5)
+        display.Position = UDim2.new(1, -rightCursor, 0.5, 0)
+        display.Size = UDim2.fromOffset(keyWidth, keyConfig.Height or 22)
+
+        display.BackgroundTransparency = 1
+        display.BorderSizePixel = 0
+
+        display.Text = keyConfig.EmptyText or keyConfig.Display or "="
+        display.TextColor3 = keyConfig.TextColor or theme.DimText
+        display.TextSize = keyConfig.TextSize or 11
+        display.Font = keyConfig.Font or theme.Font
+
+        display.TextXAlignment =
+            keyConfig.TextXAlignment
+            or Enum.TextXAlignment.Right
+
+        display.TextYAlignment = Enum.TextYAlignment.Center
+        display.AutoButtonColor = false
+        display.Active = true
+        display.Selectable = true
+        display.ZIndex = keyConfig.ZIndex or 8
+        display.Parent = row
+
+        rightCursor += keyWidth + 6
+
+        local initialKey =
+            keyConfig.Value
+            or keyConfig.Default
 
         local keyState = {
-            Value = keyConfig.Value or keyConfig.Default,
+            Value = initialKey,
             Picking = false,
+            PreviousValue = nil,
             Locked = keyConfig.Locked == true,
-            Blacklist = keyConfig.Blacklist or { Enum.KeyCode.Escape },
+            Blacklist = keyConfig.Blacklist or {},
         }
 
         local keyObject = {
             __type = "Keybind",
-            UIElements = { Display = display, Row = row },
+
+            UIElements = {
+                Display = display,
+                Row = row,
+            },
         }
+
+        local function normalizeKey(value)
+            if typeof(value) == "EnumItem" then
+                return value
+            end
+
+            if type(value) == "string" then
+                return Enum.KeyCode[value]
+            end
+
+            return nil
+        end
+
+        keyState.Value = normalizeKey(keyState.Value)
 
         local function keyName(value)
             if typeof(value) == "EnumItem" then
                 return value.Name
-            elseif type(value) == "string" then
-                return value
             end
-            return keyConfig.Display or "="
+
+            return keyConfig.EmptyText
+                or keyConfig.Display
+                or "="
         end
 
-        local function blocked(key)
-            for _, value in ipairs(keyState.Blacklist) do
-                if key == value then
+        local function isBlacklisted(key)
+            for _, blocked in ipairs(keyState.Blacklist) do
+                local normalized = normalizeKey(blocked)
+
+                if normalized and normalized == key then
                     return true
                 end
             end
+
             return false
         end
 
         local function renderKey()
             if keyState.Picking then
                 display.Text = keyConfig.PickingText or "..."
-                display.TextColor3 = keyConfig.PickingColor or theme.Accent
-            elseif keyConfig.CompactDisplay ~= false then
-                display.Text = keyConfig.Display or "="
-                display.TextColor3 = keyConfig.TextColor or theme.DimText
+                display.TextColor3 =
+                    keyConfig.PickingColor
+                    or theme.Accent
+            elseif keyState.Value then
+                display.Text = keyName(keyState.Value)
+                display.TextColor3 =
+                    keyConfig.BoundColor
+                    or keyConfig.TextColor
+                    or theme.MutedText
             else
-                display.Text = keyState.Value and keyName(keyState.Value) or (keyConfig.Display or "=")
-                display.TextColor3 = keyConfig.TextColor or theme.DimText
+                -- "=" means: no keybind assigned.
+                display.Text =
+                    keyConfig.EmptyText
+                    or keyConfig.Display
+                    or "="
+
+                display.TextColor3 =
+                    keyConfig.TextColor
+                    or theme.DimText
             end
         end
 
-        function keyObject:Set(value, fireCallback)
-            keyState.Value = value
+        local function setPicking(value)
+            keyState.Picking = value == true
             renderKey()
+        end
+
+        function keyObject:Set(value, fireCallback)
+            keyState.Value = normalizeKey(value)
+            keyState.Picking = false
+            renderKey()
+
             if fireCallback ~= false then
-                safeCallback(keyConfig.Callback, value)
+                safeCallback(
+                    keyConfig.Callback,
+                    keyState.Value
+                )
             end
+
             return self
         end
 
@@ -742,10 +935,50 @@ function Section:Checkbox(config)
             return keyState.Value
         end
 
-        function keyObject:Pick()
-            if state.Locked or keyState.Locked then return self end
-            keyState.Picking = true
+        function keyObject:Clear(fireCallback)
+            keyState.Value = nil
+            keyState.Picking = false
             renderKey()
+
+            if fireCallback ~= false then
+                safeCallback(
+                    keyConfig.Callback,
+                    nil
+                )
+            end
+
+            return self
+        end
+
+        function keyObject:Pick()
+            if state.Locked or keyState.Locked then
+                return self
+            end
+
+            keyState.PreviousValue =
+                keyState.Value
+
+            setPicking(true)
+
+            safeCallback(
+                keyConfig.OnPicking,
+                true
+            )
+
+            return self
+        end
+
+        function keyObject:CancelPick()
+            keyState.Value =
+                keyState.PreviousValue
+
+            setPicking(false)
+
+            safeCallback(
+                keyConfig.OnPicking,
+                false
+            )
+
             return self
         end
 
@@ -763,116 +996,205 @@ function Section:Checkbox(config)
             return self
         end
 
+        -- Small hover cue so it is obvious "=" is interactive.
+        display.MouseEnter:Connect(function()
+            if not state.Locked and not keyState.Locked and not keyState.Picking then
+                tween(display, 0.08, {
+                    TextColor3 = keyConfig.HoverColor or theme.Text,
+                })
+            end
+        end)
+
+        display.MouseLeave:Connect(function()
+            renderKey()
+        end)
+
         display.MouseButton1Click:Connect(function()
             keyObject:Pick()
         end)
 
         local keyConnection
+
         keyConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if not row.Parent then
-                keyConnection:Disconnect()
-                return
-            end
-
-            if not keyState.Picking or gameProcessed then
+                if keyConnection then
+                    keyConnection:Disconnect()
+                end
                 return
             end
 
             local key = input.KeyCode
-            if key == Enum.KeyCode.Unknown or blocked(key) then
-                keyState.Picking = false
-                renderKey()
+
+            if key == Enum.KeyCode.Unknown then
                 return
             end
 
-            keyState.Picking = false
-            keyState.Value = key
-            renderKey()
-            safeCallback(keyConfig.Callback, key)
+            -- PICKING MODE:
+            -- the next keyboard key becomes the keybind.
+            if keyState.Picking then
+                if key == Enum.KeyCode.Escape then
+                    keyObject:CancelPick()
+                    return
+                end
+
+                -- Backspace/Delete = remove the bind and return to "=".
+                if key == Enum.KeyCode.Backspace
+                    or key == Enum.KeyCode.Delete
+                then
+                    keyObject:Clear(true)
+
+                    safeCallback(
+                        keyConfig.OnPicking,
+                        false
+                    )
+
+                    return
+                end
+
+                if isBlacklisted(key) then
+                    return
+                end
+
+                keyState.Value = key
+                keyState.Picking = false
+                renderKey()
+
+                safeCallback(
+                    keyConfig.Callback,
+                    key
+                )
+
+                safeCallback(
+                    keyConfig.OnPicking,
+                    false
+                )
+
+                return
+            end
+
+            -- NORMAL MODE:
+            -- pressing the assigned key toggles this checkbox.
+            if gameProcessed
+                or state.Locked
+                or keyState.Locked
+            then
+                return
+            end
+
+            if keyState.Value
+                and key == keyState.Value
+            then
+                object:Set(
+                    not state.Value,
+                    true
+                )
+
+                safeCallback(
+                    keyConfig.OnTriggered,
+                    state.Value,
+                    key
+                )
+            end
         end)
 
         object.Keybind = keyObject
         object.UIElements.Keybind = display
+
+        function object:SetKeybind(value, fireCallback)
+            keyObject:Set(value, fireCallback)
+            return self
+        end
+
+        function object:GetKeybind()
+            return keyObject:Get()
+        end
+
+        function object:ClearKeybind(fireCallback)
+            keyObject:Clear(fireCallback)
+            return self
+        end
+
+        function object:PickKeybind()
+            keyObject:Pick()
+            return self
+        end
+
         renderKey()
     end
 
-    attachLockAPI(object, state, box)
-    render()
+    --========================================================
+    -- OPTIONAL VALUE TEXT
+    --========================================================
+
+    if hasValueText then
+        local valueWidth =
+            config.ValueWidth or 48
+
+        local valueLabel = makeText(row, {
+            Text = tostring(config.ValueText),
+
+            TextColor3 =
+                config.ValueTextColor
+                or theme.DimText,
+
+            TextSize =
+                config.ValueTextSize
+                or 11,
+
+            Font = theme.Font,
+
+            AnchorPoint =
+                Vector2.new(1, 0.5),
+
+            Position =
+                UDim2.new(
+                    1,
+                    -rightCursor,
+                    0.5,
+                    0
+                ),
+
+            Size =
+                UDim2.fromOffset(
+                    valueWidth,
+                    20
+                ),
+
+            TextXAlignment =
+                Enum.TextXAlignment.Right,
+
+            ZIndex = 4,
+        })
+
+        rightCursor += valueWidth + 6
+
+        object.UIElements.ValueText =
+            valueLabel
+
+        function object:SetValueText(value)
+            valueLabel.Text =
+                tostring(value)
+
+            return self
+        end
+    end
+
+    attachLockAPI(
+        object,
+        state,
+        box
+    )
+
+    renderCheckbox(false)
 
     return object
 end
 
+-- Toggle is intentionally kept as a compatibility alias, but it now renders
+-- the same square Checkbox control requested by the new design.
 function Section:Toggle(config)
-    config = config or {}
-    local theme = self.Window.Theme
-    config.RightReserve = config.RightReserve or 48
-
-    local row, title = makeRow(self, config, config.Height or 30)
-
-    local track = Instance.new("TextButton")
-    track.Name = "Toggle"
-    track.AnchorPoint = Vector2.new(1, 0.5)
-    track.Position = UDim2.new(1, 0, 0.5, 0)
-    track.Size = UDim2.fromOffset(config.Width or 34, config.ToggleHeight or 18)
-    track.BackgroundColor3 = theme.Element
-    track.BorderSizePixel = 0
-    track.Text = ""
-    track.AutoButtonColor = false
-    track.Parent = row
-    round(track, 99)
-
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.fromOffset((config.ToggleHeight or 18) - 4, (config.ToggleHeight or 18) - 4)
-    knob.AnchorPoint = Vector2.new(0, 0.5)
-    knob.Position = UDim2.new(0, 2, 0.5, 0)
-    knob.BackgroundColor3 = theme.Text
-    knob.BorderSizePixel = 0
-    knob.Parent = track
-    round(knob, 99)
-
-    local state = {
-        Value = config.Default == true,
-        Locked = config.Locked or false,
-    }
-
-    local object = {
-        __type = "Toggle",
-        UIElements = { Row = row, Title = title, Track = track, Knob = knob },
-    }
-
-    local function render(animated)
-        local targetColor = state.Value and (config.ActiveColor or theme.Accent) or (config.InactiveColor or theme.Element)
-        local x = state.Value and ((config.Width or 34) - (config.ToggleHeight or 18) + 2) or 2
-
-        if animated then
-            tween(track, 0.12, { BackgroundColor3 = targetColor })
-            tween(knob, 0.12, { Position = UDim2.new(0, x, 0.5, 0) })
-        else
-            track.BackgroundColor3 = targetColor
-            knob.Position = UDim2.new(0, x, 0.5, 0)
-        end
-    end
-
-    function object:Set(value, fireCallback)
-        state.Value = value == true
-        render(true)
-        if fireCallback ~= false then
-            safeCallback(config.Callback, state.Value)
-        end
-        return self
-    end
-
-    function object:Get()
-        return state.Value
-    end
-
-    track.MouseButton1Click:Connect(function()
-        if state.Locked then return end
-        object:Set(not state.Value, true)
-    end)
-
-    attachLockAPI(object, state, track)
-    render(false)
+    local object = self:Checkbox(config or {})
+    object.__type = "Checkbox"
     return object
 end
 
@@ -2499,6 +2821,8 @@ local ConfigTab = Window:Tab({ Title = "Config" })
 --============================================================
 -- MAIN / LEFT
 --============================================================
+-- Checkboxes include an integrated key selector. "=" means no keybind.
+-- Click "=", press a key to bind it; Backspace/Delete clears it.
 
 local Movement = MainTab:Section({
     Title = "Movement",
@@ -2510,13 +2834,6 @@ local Movement = MainTab:Section({
 
 Movement:Checkbox({
     Title = "Air Strafe Speed",
-    Keybind = {
-        Display = "=",
-        CompactDisplay = true,
-        Callback = function(key)
-            print("Air Strafe Speed key:", key)
-        end,
-    },
     Callback = function(value)
         print("Air Strafe Speed:", value)
     end,
@@ -2524,13 +2841,6 @@ Movement:Checkbox({
 
 Movement:Checkbox({
     Title = "Virtual Strafe",
-    Keybind = {
-        Display = "=",
-        CompactDisplay = true,
-        Callback = function(key)
-            print("Virtual Strafe key:", key)
-        end,
-    },
     Callback = function(value)
         print("Virtual Strafe:", value)
     end,
@@ -2538,13 +2848,6 @@ Movement:Checkbox({
 
 Movement:Checkbox({
     Title = "Fly Glitch [Q=Up / Ctrl=Down]",
-    Keybind = {
-        Display = "=",
-        CompactDisplay = true,
-        Callback = function(key)
-            print("Fly Glitch key:", key)
-        end,
-    },
     Callback = function(value)
         print("Fly Glitch:", value)
     end,
@@ -2571,6 +2874,7 @@ Movement:Checkbox({
 Movement:Checkbox({
     Title = "Auto Trimp",
     ValueText = "none",
+    Keybind = false,
     Default = false,
 })
 
@@ -2607,26 +2911,14 @@ local EmoteActions = MainTab:Section({
 
 EmoteActions:Checkbox({
     Title = "360 Emote Hop (A + D)",
-    Keybind = {
-        Display = "=",
-        CompactDisplay = true,
-    },
 })
 
 EmoteActions:Checkbox({
     Title = "Emote Spin",
-    Keybind = {
-        Display = "=",
-        CompactDisplay = true,
-    },
 })
 
 EmoteActions:Checkbox({
     Title = "Nonmovable Emote Hop",
-    Keybind = {
-        Display = "=",
-        CompactDisplay = true,
-    },
 })
 
 EmoteActions:Checkbox({
