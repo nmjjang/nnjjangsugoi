@@ -1,3 +1,25 @@
+--[[
+    MovementWaveUI.lua
+    Original UI framework inspired by the structure/style requested by the user.
+    Features:
+      - Lucide icon pack via loadstring
+      - Window + draggable frame
+      - RightShift visibility toggle
+      - X close button
+      - Sidebar tabs + tab dividers
+      - Independent invisible left/right scrolling columns
+      - Sections
+      - Button, Checkbox, Toggle, Keybind, Slider, Dropdown, Input,
+        Colorpicker, Paragraph, Code, Divider, Space, Tag
+      - Notifications, Dialogs, Popups
+      - Theme customization
+      - Callback + Set/Get/Lock/Unlock patterns
+
+    Notes:
+      - This file only builds UI/components and callback plumbing.
+      - Game-specific behavior belongs in your callbacks.
+]]
+
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
